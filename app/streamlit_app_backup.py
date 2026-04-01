@@ -1,5 +1,4 @@
 import os
-import boto3
 import joblib
 import pandas as pd
 import streamlit as st
@@ -14,23 +13,12 @@ st.title("🏠 House Price Prediction — Demo")
 # Utilities
 # --------------------
 @st.cache_resource
-def load_model_file():
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    local_model_path = os.path.join(base_dir, "models", "house_rf.joblib")
-
-    use_s3 = os.getenv("USE_S3_MODEL", "false").lower() == "true"
-
-    if use_s3:
-        bucket = os.getenv("S3_BUCKET", "amol-house-price-models")
-        key = os.getenv("S3_KEY", "house_rf.joblib")
-        region = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
-
-        if not os.path.exists(local_model_path):
-            s3 = boto3.client("s3", region_name=region)
-            os.makedirs(os.path.dirname(local_model_path), exist_ok=True)
-            s3.download_file(bucket, key, local_model_path)
-
-    return joblib.load(local_model_path)
+def load_model(path):
+    try:
+        return joblib.load(path)
+    except Exception as e:
+        st.error(f"Failed to load model from {path}: {e}")
+        return None
 
 def make_input_df(values: dict):
     return pd.DataFrame([values])
@@ -38,11 +26,8 @@ def make_input_df(values: dict):
 # --------------------
 # Model load
 # --------------------
-try:
-    model = load_model_file()
-except Exception as e:
-    model = None
-    st.error(f"Failed to load model: {e}")
+MODEL_PATH = os.path.normpath(os.path.join(os.path.dirname(__file__), "../models/house_rf.joblib"))
+model = load_model(MODEL_PATH)
 
 # --------------------
 # Sidebar: controls & presets
@@ -69,6 +54,7 @@ AveOccup = st.sidebar.slider("AveOccup", min_value=0.0, max_value=20.0, value=fl
 Latitude = st.sidebar.number_input("Latitude", value=float(defaults["Latitude"]), step=0.01, format="%.2f")
 Longitude = st.sidebar.number_input("Longitude", value=float(defaults["Longitude"]), step=0.01, format="%.2f")
 
+# Extra: show raw inputs toggle
 show_inputs = st.sidebar.checkbox("Show raw input dataframe", value=False)
 
 # --------------------
@@ -88,16 +74,15 @@ with col1:
         "Latitude": Latitude,
         "Longitude": Longitude
     }
-
     if show_inputs:
         st.dataframe(make_input_df(input_values))
-
     st.markdown("Click **Predict** to run the model on the values above.")
 
     if st.button("Predict"):
         if model is None:
             st.error("Model not loaded — cannot predict.")
         else:
+            # basic validation
             if Population < 0:
                 st.error("Population must be >= 0")
             else:
@@ -120,7 +105,7 @@ with col2:
     """)
     st.markdown("---")
     st.write("Try different presets from the sidebar to see how predictions change.")
-    st.write("This app supports local model loading and optional S3-based model loading for deployment.")
+    st.write("You can dockerize this app or deploy the API separately for production.")
 
 st.markdown("---")
-st.caption("Local demo — production-ready model loading supported via S3.")
+st.caption("Local demo — not production. Model trained on California housing sample data.")
